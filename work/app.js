@@ -21,10 +21,10 @@ class App {
   constructor() {
     this.onXRFrame = this.onXRFrame.bind(this);
     this.onEnterAR = this.onEnterAR.bind(this);
-
+    this.onClick = this.onClick.bind(this);
     this.init();
   }
-
+//test
   /**
    * Fetches the XRDevice, if available.
    */
@@ -130,18 +130,50 @@ class App {
     // render scene.
     // Call our utility which gives us a THREE.Scene populated with
     // cubes everywhere.
-    this.scene = DemoUtils.createCubeScene();
-
+    //this.scene = DemoUtils.createCubeScene();
+    this.scene = new THREE.Scene();
     // We'll update the camera matrices directly from API, so
     // disable matrix auto updates so three.js doesn't attempt
     // to handle the matrices independently.
+
+    const geometry = new THREE.BoxBufferGeometry(0.5, 0.5, 0.5);
+    const material = new THREE.MeshNormalMaterial();
+    geometry.applyMatrix(new THREE.Matrix4().makeTranslation(0, 0.25, 0));
+    this.model = new THREE.Mesh(geometry, material);
+
     this.camera = new THREE.PerspectiveCamera();
     this.camera.matrixAutoUpdate = false;
 
+    this.reticle = new Reticle(this.session, this.camera);
+    this.scene.add(this.reticle);
     this.frameOfRef = await this.session.requestFrameOfReference('eye-level');
     this.session.requestAnimationFrame(this.onXRFrame);
-  }
 
+    window.addEventListener('click', this.onClick);
+  }
+  async onClick(e) {
+    const x = 0;
+    const y = 0;
+   
+    this.raycaster = this.raycaster || new THREE.Raycaster();
+    this.raycaster.setFromCamera({ x, y }, this.camera);
+    const ray = this.raycaster.ray;
+    
+    const origin = new Float32Array(ray.origin.toArray());
+    const direction = new Float32Array(ray.direction.toArray());
+    const hits = await this.session.requestHitTest(origin,
+                                                   direction,
+                                                   this.frameOfRef);
+
+    if (hits.length) {
+      const hit = hits[0];
+      const hitMatrix = new THREE.Matrix4().fromArray(hit.hitMatrix);
+
+      this.model.position.setFromMatrixPosition(hitMatrix);
+
+      this.scene.add(this.model);
+    }
+  }  
   /**
    * Called on the XRSession's requestAnimationFrame.
    * Called with the time and XRPresentationFrame.
@@ -150,6 +182,11 @@ class App {
     let session = frame.session;
     let pose = frame.getDevicePose(this.frameOfRef);
 
+    this.reticle.update(this.frameOfRef);
+    if (this.reticle.visible && !this.stabilized) {
+      this.stabilized = true;
+      document.body.classList.add('stabilized');
+    }
     // Queue up the next frame
     session.requestAnimationFrame(this.onXRFrame);
 
